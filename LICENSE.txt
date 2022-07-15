@@ -17,5 +17,5 @@ fitness for any particular purpose.
 
 Please cite the author in any work or product based on this material:
 
-Lai P, Lu Z. BERT-GT: Cross-sentence n-ary relation extraction with BERT and Graph Transformer.
-Bioinformatics. 2020.
+Lai P and Lu Z. BERT-GT: Cross-sentence n-ary relation extraction with BERT and Graph Transformer.
+Bioinformatics. 2021.

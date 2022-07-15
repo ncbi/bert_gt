@@ -85,10 +85,11 @@ bash run_nary_exp.sh 0,1 nary_dgv_bin "datasets/nary/processed/all"
 Bioinformatics.
 
 ```
-@article{lai2020bertgt,
+@article{lai2021bertgt,
   author    = {Po-Ting Lai and Zhiyong Lu},
   title     = {BERT-GT: Cross-sentence n-ary relation extraction with BERT and Graph Transformer},
   journal   = {Bioinformatics},
+  year   = {2021},
   publisher = {Oxford University Press}
 }
 ```
