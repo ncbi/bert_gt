@@ -56,6 +56,10 @@ flags.DEFINE_string(
     "output_dir", None,
     "The output directory where the model checkpoints will be written.")
 
+flags.DEFINE_string(
+    "test_file", "",
+    "The input path of test set file.")
+
 ## Other parameters
 
 flags.DEFINE_string(
@@ -70,6 +74,14 @@ flags.DEFINE_bool(
 flags.DEFINE_bool(
     "use_balanced_neg", False,
     "Whether to balance the numbers of negative and non-negative instances in train/dev?")
+
+flags.DEFINE_bool(
+    "no_neg_for_train_dev", False,
+    "Not to use negative instances in train and dev")
+
+flags.DEFINE_bool(
+    "test_has_header", True,
+    "Whether the test set has a header or not?")
 
 flags.DEFINE_integer(
     "max_neg_scale", 2,
@@ -250,10 +262,14 @@ class DataProcessor(object):
         """Gets a collection of `InputExample`s for the dev set."""
         raise NotImplementedError()
 
-    def get_test_examples(self, data_dir):
+    def get_test_examples(self, data_dir, has_header):
         """Gets a collection of `InputExample`s for prediction."""
         raise NotImplementedError()
-
+        
+    def get_test_examples_by_file(self, in_test_file):
+        """Gets a collection of `InputExample`s for prediction."""
+        raise NotImplementedError()
+        
     def get_labels(self):
         """Gets the list of labels for this data set."""
         raise NotImplementedError()
@@ -277,6 +293,14 @@ class DataProcessor(object):
                 #all_indices[token].append(i)
                 all_indices[token].append(i_wo_empty_string)
         return all_indices
+    
+    def get_entity_types_in_text(self, text_a):
+        entity_type_dict = self.get_entity_type_dict()
+        entity_types_in_text = set()
+        for i, token in enumerate(text_a.split(' ')):
+            if token in entity_type_dict:
+                entity_types_in_text.add(token)
+        return entity_types_in_text
 
     @classmethod
     def _read_tsv(cls, 
@@ -301,6 +325,7 @@ class BlueBERT_GT_Processor(DataProcessor):
                  in_neighbors_idx   = 2,
                  label_idx          = 3,
                  use_balanced_neg   = False, 
+                 no_neg_for_train_dev = False,
                  max_neg_scale      = 2,
                  balanced_neg = ''):
         """If use_balanced_neg is True, you have to assign 
@@ -313,6 +338,7 @@ class BlueBERT_GT_Processor(DataProcessor):
         self.in_neighbors_idx = in_neighbors_idx
         self.label_idx = label_idx
         self.use_balanced_neg = use_balanced_neg
+        self.no_neg_for_train_dev = no_neg_for_train_dev
         self.max_neg_scale = max_neg_scale
         self.balanced_neg = balanced_neg
 
@@ -326,10 +352,15 @@ class BlueBERT_GT_Processor(DataProcessor):
         return self._create_examples(
             self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev", False)
 
-    def get_test_examples(self, data_dir):
+    def get_test_examples(self, data_dir, has_header=True):
         """See base class."""
         return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+            self._read_tsv(os.path.join(data_dir, "test.tsv")), "test", has_header)
+        
+    def get_test_examples_by_file(self, in_test_file, has_header=True):
+        """See base class."""
+        return self._create_examples(
+                self._read_tsv(in_test_file), "test", has_header)
         
     def update_neighbors_by_shortest_path(self, in_neighbors, text_a):
         entity_indices = self.get_entity_indices_by_types(text_a)
@@ -420,8 +451,9 @@ class BlueBERT_GT_Processor(DataProcessor):
                 try:
                     label = self._map_label(tokenization.convert_to_unicode(line[self.label_idx]))
                 except IndexError:
-                    logging.exception(line)
+                    logging.exception(self.label_idx)
                     exit(1)
+                    
             if self.use_balanced_neg and set_type == 'train':
                 _r = random.randint(1, neg_scale)
                 if _r > self.max_neg_scale and label == self.balanced_neg:
@@ -432,7 +464,9 @@ class BlueBERT_GT_Processor(DataProcessor):
                     neg_number += 1
                 else:
                     non_neg_number += 1
-                    
+            
+            if self.no_neg_for_train_dev and set_type != 'test' and label == self.balanced_neg:
+                continue
             examples.append(
                 InputExample(
                     guid=guid, 
@@ -447,6 +481,7 @@ class CDRGraphProcessor(BlueBERT_GT_Processor):
     
     def __init__(self,
                  use_balanced_neg = False,
+                 no_neg_for_train_dev = False,
                  max_neg_scale    = 2,
                  balanced_neg     = '0'):
         super().__init__(
@@ -454,6 +489,7 @@ class CDRGraphProcessor(BlueBERT_GT_Processor):
             in_neighbors_idx = 6,
             label_idx        = 7,
             use_balanced_neg = use_balanced_neg,
+            no_neg_for_train_dev = no_neg_for_train_dev,
             max_neg_scale    = 2,
             balanced_neg     = balanced_neg)
     
@@ -466,7 +502,6 @@ class CDRGraphProcessor(BlueBERT_GT_Processor):
     
     def update_neighbors_by_shortest_path(self, in_neighbors, text_a):
         entity_indices = self.get_entity_indices_by_types(text_a)
-        
         _in_neighbors = in_neighbors.split(' ')
         
         if len(text_a.split(' ')) == len(_in_neighbors):
@@ -479,37 +514,103 @@ class CDRGraphProcessor(BlueBERT_GT_Processor):
             return in_neighbors
         return ' '.join(new_in_neighbors)
     
-class TmVarGraphProcessor(BlueBERT_GT_Processor):
+class BioredNoveltyGraphProcessor(BlueBERT_GT_Processor):
     
     def __init__(self,
                  use_balanced_neg = False,
+                 no_neg_for_train_dev = False,
                  max_neg_scale    = 2,
-                 balanced_neg     = '0'):
+                 balanced_neg     = 'None'):
         super().__init__(
             text_a_idx       = 5,
             in_neighbors_idx = 6,
-            label_idx        = 7,
+            label_idx        = 8,
             use_balanced_neg = use_balanced_neg,
+            no_neg_for_train_dev = no_neg_for_train_dev,
             max_neg_scale    = 2,
             balanced_neg     = balanced_neg)
     
     def get_labels(self):
         """See base class."""
-        return ["0", "1"]
+        return ['No', 
+                'None', 
+                'Novel']
     
     def get_entity_type_dict(self):
-        return {'@VariantSrc$':0, '@DiseaseTgt$':1}
+        return {'@GeneOrGeneProductSrc$':0, 
+                '@DiseaseOrPhenotypicFeatureSrc$':0,
+                '@ChemicalEntitySrc$':0,
+                '@GeneOrGeneProductTgt$':1,
+                '@DiseaseOrPhenotypicFeatureTgt$':1,
+                '@ChemicalEntityTgt$':1,}
     
     def update_neighbors_by_shortest_path(self, in_neighbors, text_a):
-        entity_indices = self.get_entity_indices_by_types(text_a)
+        entity_indices = self.get_entity_indices_by_types(text_a)        
+        entity_types = self.get_entity_types_in_text(text_a)
+        src_entity_type = [x for x in entity_types if x.endswith('Src$')][0]
+        tgt_entity_type = [x for x in entity_types if x.endswith('Tgt$')][0]
         
         _in_neighbors = in_neighbors.split(' ')
         
         if len(text_a.split(' ')) == len(_in_neighbors):
             new_in_neighbors = graph_algorithm.find_all_shortest_path_between(
                                                   _in_neighbors,
-                                                  entity_indices['@VariantSrc$'],
-                                                  entity_indices['@DiseaseTgt$'])
+                                                  entity_indices[src_entity_type],
+                                                  entity_indices[tgt_entity_type])
+        else:
+            print('Cannot not process', text_a)
+            return in_neighbors
+        return ' '.join(new_in_neighbors)
+    
+class BioredMultiGraphProcessor(BlueBERT_GT_Processor):
+    
+    def __init__(self,
+                 use_balanced_neg = False,
+                 no_neg_for_train_dev = False,
+                 max_neg_scale    = 2,
+                 balanced_neg     = 'None'):
+        super().__init__(
+            text_a_idx       = 5,
+            in_neighbors_idx = 6,
+            label_idx        = 7,
+            use_balanced_neg = use_balanced_neg,
+            no_neg_for_train_dev = no_neg_for_train_dev,
+            max_neg_scale    = 2,
+            balanced_neg     = balanced_neg)
+    
+    def get_labels(self):
+        """See base class."""
+        return ['None', 
+                'Association', 
+                'Bind',
+                'Comparison',
+                'Conversion',
+                'Cotreatment',
+                'Drug_Interaction',
+                'Negative_Correlation',
+                'Positive_Correlation']
+    
+    def get_entity_type_dict(self):
+        return {'@GeneOrGeneProductSrc$':0, 
+                '@DiseaseOrPhenotypicFeatureSrc$':0,
+                '@ChemicalEntitySrc$':0,
+                '@GeneOrGeneProductTgt$':1,
+                '@DiseaseOrPhenotypicFeatureTgt$':1,
+                '@ChemicalEntityTgt$':1,}
+    
+    def update_neighbors_by_shortest_path(self, in_neighbors, text_a):
+        entity_indices = self.get_entity_indices_by_types(text_a)        
+        entity_types = self.get_entity_types_in_text(text_a)
+        src_entity_type = [x for x in entity_types if x.endswith('Src$')][0]
+        tgt_entity_type = [x for x in entity_types if x.endswith('Tgt$')][0]
+        
+        _in_neighbors = in_neighbors.split(' ')
+        
+        if len(text_a.split(' ')) == len(_in_neighbors):
+            new_in_neighbors = graph_algorithm.find_all_shortest_path_between(
+                                                  _in_neighbors,
+                                                  entity_indices[src_entity_type],
+                                                  entity_indices[tgt_entity_type])
         else:
             print('Cannot not process', text_a)
             return in_neighbors
@@ -519,6 +620,7 @@ class NaryDGVMultiProcessor(BlueBERT_GT_Processor):
 
     def __init__(self,
                  use_balanced_neg = False,
+                 no_neg_for_train_dev = False,
                  max_neg_scale    = 2,
                  balanced_neg     = 'None'):
         super().__init__(
@@ -526,6 +628,7 @@ class NaryDGVMultiProcessor(BlueBERT_GT_Processor):
             in_neighbors_idx = 5,
             label_idx        = 6,
             use_balanced_neg = use_balanced_neg,
+            no_neg_for_train_dev = no_neg_for_train_dev,
             max_neg_scale    = max_neg_scale,
             balanced_neg     = balanced_neg)
     
@@ -541,6 +644,7 @@ class NaryDVMultiProcessor(BlueBERT_GT_Processor):
 
     def __init__(self,
                  use_balanced_neg = False,
+                 no_neg_for_train_dev = False,
                  max_neg_scale    = 2,
                  balanced_neg     = 'None'):
         super().__init__(
@@ -548,6 +652,7 @@ class NaryDVMultiProcessor(BlueBERT_GT_Processor):
             in_neighbors_idx = 4,
             label_idx        = 5,
             use_balanced_neg = use_balanced_neg,
+            no_neg_for_train_dev = no_neg_for_train_dev,
             max_neg_scale    = max_neg_scale,
             balanced_neg     = balanced_neg)
     
@@ -562,6 +667,7 @@ class NaryDGVBinaryProcessor(BlueBERT_GT_Processor):
 
     def __init__(self,
                  use_balanced_neg = False,
+                 no_neg_for_train_dev = False,
                  max_neg_scale    = 2,
                  balanced_neg     = 'NO'):
         super().__init__(
@@ -569,6 +675,7 @@ class NaryDGVBinaryProcessor(BlueBERT_GT_Processor):
             in_neighbors_idx = 5,
             label_idx        = 6,
             use_balanced_neg = use_balanced_neg,
+            no_neg_for_train_dev = no_neg_for_train_dev,
             max_neg_scale    = max_neg_scale,
             balanced_neg     = balanced_neg)
     
@@ -586,6 +693,7 @@ class NaryDVBinaryProcessor(BlueBERT_GT_Processor):
 
     def __init__(self,
                  use_balanced_neg = False,
+                 no_neg_for_train_dev = False,
                  max_neg_scale    = 2,
                  balanced_neg     = 'NO'):
         super().__init__(
@@ -593,6 +701,7 @@ class NaryDVBinaryProcessor(BlueBERT_GT_Processor):
             in_neighbors_idx = 4,
             label_idx        = 5,
             use_balanced_neg = use_balanced_neg,
+            no_neg_for_train_dev = no_neg_for_train_dev,
             max_neg_scale    = max_neg_scale,
             balanced_neg     = balanced_neg)
   
@@ -610,6 +719,7 @@ class DDIProcessor(BlueBERT_GT_Processor):
 
     def __init__(self,
                  use_balanced_neg = False,
+                 no_neg_for_train_dev = False,
                  max_neg_scale    = 2,
                  balanced_neg     = 'DDI-false'):
         super().__init__(
@@ -617,6 +727,7 @@ class DDIProcessor(BlueBERT_GT_Processor):
             in_neighbors_idx = 2,
             label_idx        = 3,
             use_balanced_neg = use_balanced_neg,
+            no_neg_for_train_dev = no_neg_for_train_dev,
             max_neg_scale    = max_neg_scale,
             balanced_neg     = balanced_neg)
     
@@ -631,6 +742,7 @@ class ChemProtProcessor(BlueBERT_GT_Processor):
 
     def __init__(self,
                  use_balanced_neg = False,
+                 no_neg_for_train_dev = False,
                  max_neg_scale    = 2,
                  balanced_neg     = 'false'):
         super().__init__(
@@ -638,6 +750,7 @@ class ChemProtProcessor(BlueBERT_GT_Processor):
             in_neighbors_idx = 2,
             label_idx        = 3,
             use_balanced_neg = use_balanced_neg,
+            no_neg_for_train_dev = no_neg_for_train_dev,
             max_neg_scale    = max_neg_scale,
             balanced_neg     = balanced_neg)
     
@@ -646,7 +759,7 @@ class ChemProtProcessor(BlueBERT_GT_Processor):
         return ["false", "CPR:4", "CPR:6", "CPR:5", "CPR:9", "CPR:3"]
     
     def get_entity_type_dict(self):
-        return {'@DRUG$':0}
+        return {'@GENE$':0, '@CHEMICAL$':1}
     
 def convert_single_example(ex_index, 
                            example, 
@@ -1289,7 +1402,8 @@ def main(_):
         "nary_dv_bin": NaryDVBinaryProcessor,
         "ddi": DDIProcessor,
         "chemprot": ChemProtProcessor,
-        "tmvar": TmVarGraphProcessor,
+        "biored_all_mul": BioredMultiGraphProcessor,
+        "biored_novelty": BioredNoveltyGraphProcessor,
     }
 
     tokenization.validate_case_matches_checkpoint(FLAGS.do_lower_case,
@@ -1323,6 +1437,7 @@ def main(_):
             (FLAGS.max_seq_length, bert_config.max_position_embeddings))
 
     bert_config.use_balanced_neg = FLAGS.use_balanced_neg
+    bert_config.no_neg_for_train_dev = FLAGS.no_neg_for_train_dev
     bert_config.max_neg_scale = FLAGS.max_neg_scale
 
     tf.gfile.MakeDirs(FLAGS.output_dir)
@@ -1332,7 +1447,9 @@ def main(_):
     if task_name not in processors:
         raise ValueError("Task not found: %s" % (task_name))
 
-    processor = processors[task_name](bert_config.use_balanced_neg)
+    processor = processors[task_name](
+            use_balanced_neg = bert_config.use_balanced_neg,
+            no_neg_for_train_dev = bert_config.no_neg_for_train_dev)
 
 
 
@@ -1462,7 +1579,10 @@ def main(_):
         assert num_written_lines == num_actual_eval_examples
 
     if FLAGS.do_predict:
-        predict_examples = processor.get_test_examples(FLAGS.data_dir)
+        if FLAGS.test_file != "":
+            predict_examples = processor.get_test_examples_by_file(FLAGS.test_file, FLAGS.test_has_header)
+        else:
+            predict_examples = processor.get_test_examples(FLAGS.data_dir, FLAGS.test_has_header)
         num_actual_predict_examples = len(predict_examples)
         if FLAGS.use_tpu:
             # TPU requires a fixed batch size for all batches, therefore the number

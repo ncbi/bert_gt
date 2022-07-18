@@ -2,7 +2,7 @@
 
 -----
 
-This repository provides source codes of our paper [BERT-GT: Cross-sentence n-ary relation extraction with BERT and Graph Transformer].
+This repository provides source codes of our paper [BERT-GT: Cross-sentence n-ary relation extraction with BERT and Graph Transformer] and the BERT-GT implementation of our paper [BioRED: A Rich Biomedical Relation Extraction Dataset].
 
 ## Environment:
 
@@ -21,7 +21,7 @@ We assume that you use the Anaconda envrionment, thus the above command will use
 
 ## Step 1:
 
-Because the process of generating the input datasets is trivial (have to install the scispacy), we provide our dataset_format_convert.py, and you can use it to convert either the CDR dataset or n-ary dataset into the input datasets of BERT-GT.
+Because the process of generating the input datasets is trivial (have to install the scispacy), we provide our dataset_format_convert.py, and you can use it to convert the CDR, n-ary, and BioRED datasets into the input datasets of BERT-GT.
 
 ### Download and generate the CDR dataset for BERT-GT
 ```
@@ -31,6 +31,11 @@ bash build_cdr_dataset.sh
 ### Download and generate the n-ary dataset for BERT-GT
 ```
 bash build_nary_dataset.sh
+```
+
+### Download and generate the BioRED dataset for BERT-GT
+```
+bash build_biored_dataset.sh
 ```
 
 ## Step 2:
@@ -79,17 +84,42 @@ For example
 bash run_nary_exp.sh 0,1 nary_dgv_bin "datasets/nary/processed/all"
 ```
 
-## Citing BERT-GT
+## Step 3c: Running on the BioRED dataset
 
-* Lai P and Lu Z. BERT-GT: Cross-sentence n-ary relation extraction with BERT and Graph Transformer.
-Bioinformatics.
+```
+bash run_biored_exp.sh <CUDA_VISIBLE_DEVICES>
+```
+
+For example
+
+```
+bash run_biored_exp.sh 0,1
+```
+
+## Citing BERT-GT and BioRED
+
+* Lai P. T. and Lu Z. BERT-GT: Cross-sentence n-ary relation extraction with BERT and Graph Transformer.
+Bioinformatics. 2021.
 
 ```
 @article{lai2021bertgt,
   author    = {Po-Ting Lai and Zhiyong Lu},
   title     = {BERT-GT: Cross-sentence n-ary relation extraction with BERT and Graph Transformer},
   journal   = {Bioinformatics},
-  year   = {2021},
+  year      = {2021},
+  publisher = {Oxford University Press}
+}
+```
+
+
+* Luo L., Lai P. T., Wei C. H., Arighi C. N. and Lu Z. BioRED: A Rich Biomedical Relation Extraction Dataset.
+```
+Briefing in Bioinformatics. 2022.
+@article{luo2022biored,
+  author    = {Luo, Ling and Lai, Po-Ting and Wei, Chih-Hsuan and Arighi, Cecilia N and Lu, Zhiyong},
+  title     = {BioRED: A Rich Biomedical Relation Extraction Dataset},
+  journal   = {Briefing in Bioinformatics},
+  year      = {2022},
   publisher = {Oxford University Press}
 }
 ```

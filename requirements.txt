@@ -1,5 +1,5 @@
 tensorflow-gpu
 pandas
-spacy==2.2
+spacy
 scispacy
 six
