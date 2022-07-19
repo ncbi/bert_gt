@@ -621,6 +621,8 @@ def dump_documents_2_bert_gt_format(
                 if is_test_set or (id1 != '-' and id2 != '-'):
                     if has_novelty:
                         relation_label = relation_label.replace('|', '\t')
+                    else:
+                        relation_label = relation_label.split('|')[0]
                     bert_writer.write(instance + '\t' + 
                                       relation_label + '\n')
                                 
